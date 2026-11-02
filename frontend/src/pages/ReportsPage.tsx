@@ -2,12 +2,54 @@ import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { reportsApi, wellsApi } from "../api/endpoints";
 import { useAuth } from "../features/auth/AuthContext";
+import type { Report } from "../types";
 import { formatDate } from "../utils/format";
+
+function reportExtension(report: Report, preferredFormat?: string) {
+  const format = (preferredFormat || report.file_format || "json").toLowerCase();
+  return format === "pdf" || format === "csv" ? format : "json";
+}
+
+function reportFilename(report: Report, preferredFormat?: string) {
+  const base = (report.title || "report").replace(/[\\/:*?"<>|]+/g, "_");
+  return `${base}_${report.id}.${reportExtension(report, preferredFormat)}`;
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadReport(report: Report, preferredFormat?: string) {
+  const ext = reportExtension(report, preferredFormat);
+  if (ext === "json") {
+    const full =
+      report.content_json != null || report.content_text != null
+        ? report
+        : await reportsApi.get(report.id);
+    const text = JSON.stringify(full.content_json ?? {}, null, 2);
+    saveBlob(
+      new Blob([text], { type: "application/json;charset=utf-8" }),
+      reportFilename(report, preferredFormat)
+    );
+    return;
+  }
+  const blob = await reportsApi.download(report.id);
+  saveBlob(blob, reportFilename(report, preferredFormat));
+}
 
 export function ReportsPage() {
   const { canWrite } = useAuth();
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const list = useQuery({ queryKey: ["reports"], queryFn: reportsApi.list });
   const wells = useQuery({
@@ -21,10 +63,19 @@ export function ReportsPage() {
   });
 
   const create = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => reportsApi.create(payload),
+    mutationFn: async (payload: Record<string, unknown>) => {
+      const report = await reportsApi.create(payload);
+      const exportFormat = String(payload.export_format || report.file_format || "json");
+      await downloadReport(report, exportFormat);
+      return report;
+    },
     onSuccess: (report) => {
       void qc.invalidateQueries({ queryKey: ["reports"] });
       setSelectedId(report.id);
+      setDownloadError(null);
+    },
+    onError: (err) => {
+      setDownloadError((err as Error).message || "Не удалось сформировать или скачать отчёт");
     },
   });
 
@@ -32,6 +83,7 @@ export function ReportsPage() {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const wellRaw = String(fd.get("well_id") || "");
+    setDownloadError(null);
     create.mutate({
       report_type: String(fd.get("report_type")),
       period_start: new Date(String(fd.get("period_start"))).toISOString(),
@@ -102,11 +154,12 @@ export function ReportsPage() {
               </select>
             </label>
             <button className="btn primary" disabled={create.isPending}>
-              Сформировать
+              {create.isPending ? "Формирование..." : "Сформировать"}
             </button>
             {create.isError && (
               <div className="state-box error">{(create.error as Error).message}</div>
             )}
+            {downloadError && <div className="state-box error">{downloadError}</div>}
           </form>
         </div>
       )}

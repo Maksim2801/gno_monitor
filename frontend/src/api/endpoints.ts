@@ -118,6 +118,12 @@ export const reportsApi = {
     const { data } = await api.get<Report>(`/reports/${id}`);
     return data;
   },
+  download: async (id: number) => {
+    const { data } = await api.get<Blob>(`/reports/${id}/download`, {
+      responseType: "blob",
+    });
+    return data;
+  },
 };
 
 export const adminApi = {

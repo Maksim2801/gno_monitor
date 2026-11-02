@@ -17,9 +17,18 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (r) => r,
-  (error) => {
+  async (error) => {
     const status = error.response?.status;
-    const detail = error.response?.data?.detail;
+    let data = error.response?.data;
+    if (typeof Blob !== "undefined" && data instanceof Blob) {
+      try {
+        const text = await data.text();
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = null;
+      }
+    }
+    const detail = data?.detail;
     const message =
       typeof detail === "string"
         ? detail
