@@ -405,3 +405,93 @@ table.data tr:hover td {
     grid-template-columns: 1fr;
   }
 }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.panel-head h2 {
+  margin: 0;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.btn.sm {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.param-groups {
+  display: grid;
+  gap: 1rem;
+}
+
+.param-group-title {
+  margin: 0 0 0.55rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.param-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 0.55rem;
+}
+
+.param-chip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.55rem 0.7rem;
+  align-items: start;
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  user-select: none;
+}
+
+.param-chip:hover {
+  border-color: rgba(47, 158, 123, 0.55);
+}
+
+.param-chip.is-active {
+  border-color: rgba(47, 158, 123, 0.85);
+  background: rgba(47, 158, 123, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(47, 158, 123, 0.2);
+}
+
+.param-chip input {
+  margin-top: 0.2rem;
+  accent-color: var(--accent);
+  width: 1rem;
+  height: 1rem;
+}
+
+.param-chip-title {
+  display: block;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.param-chip-meta {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}

@@ -9,6 +9,7 @@ import {
   YAxis,
 } from "recharts";
 import type { TelemetrySeries } from "../types";
+import { paramLabel } from "../utils/parameters";
 
 const COLORS = ["#2f9e7b", "#3a7ca5", "#d4a017", "#d64545", "#9b59b6", "#1abc9c"];
 
@@ -46,7 +47,7 @@ export function TelemetryChart({ series }: { series: TelemetrySeries[] }) {
               key={s.parameter_code}
               type="monotone"
               dataKey={s.parameter_code}
-              name={`${s.parameter_code} (${s.unit})`}
+              name={`${paramLabel(s.parameter_code)} (${s.unit})`}
               stroke={COLORS[i % COLORS.length]}
               dot={false}
               strokeWidth={2}
