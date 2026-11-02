@@ -48,7 +48,7 @@ export function WellsPage() {
           <option value="normal">Норма</option>
           <option value="warning">Предупреждение</option>
           <option value="critical">Критично</option>
-          <option value="stopped">Останов</option>
+          <option value="stopped">Остановлена</option>
         </select>
         <select
           value={risk}

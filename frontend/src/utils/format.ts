@@ -29,7 +29,7 @@ export function statusLabel(status?: string | null) {
     normal: "Норма",
     warning: "Предупреждение",
     critical: "Критично",
-    stopped: "Останов",
+    stopped: "Остановлена",
     maintenance: "Ремонт",
   };
   return map[status || ""] || status || "—";

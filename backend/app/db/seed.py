@@ -103,23 +103,32 @@ def seed_database(db: Session, *, force_telemetry: bool = False) -> dict[str, in
             stats["fields"] += 1
         field_rows.append(row)
 
-    # Wells: create once
-    existing_wells = db.query(Well).count()
-    wells: list[Well] = []
-    if existing_wells == 0:
-        pad_counter = 1
-        well_defs = [
-            ("SAM-101", "SAM", "normal", False),
-            ("SAM-102", "SAM", "warning", True),
-            ("SAM-103", "SAM", "normal", False),
-            ("SAM-104", "SAM", "critical", True),
-            ("PRB-201", "PRB", "normal", False),
-            ("PRB-202", "PRB", "warning", True),
-            ("PRB-203", "PRB", "stopped", False),
-            ("PRB-204", "PRB", "normal", False),
-        ]
-        pads_by_field: dict[str, WellPad] = {}
-        for field in field_rows:
+    well_defs = [
+        ("SAM-101", "SAM", "normal", False),
+        ("SAM-102", "SAM", "warning", True),
+        ("SAM-103", "SAM", "normal", False),
+        ("SAM-104", "SAM", "critical", True),
+        ("PRB-201", "PRB", "normal", False),
+        ("PRB-202", "PRB", "warning", True),
+        ("PRB-203", "PRB", "stopped", False),
+        ("PRB-204", "PRB", "normal", False),
+        # дополнительные «плохие» сценарии
+        ("SAM-105", "SAM", "critical", True),   # сильная деградация
+        ("SAM-106", "SAM", "stopped", True),    # останов после деградации
+        ("PRB-205", "PRB", "warning", True),    # развивающаяся деградация
+        ("PRB-206", "PRB", "stopped", True),    # аварийный останов
+    ]
+
+    pads_by_field: dict[str, WellPad] = {}
+    pad_counter = db.query(WellPad).count() + 1
+    for field in field_rows:
+        existing_pads = (
+            db.query(WellPad)
+            .filter(WellPad.oil_field_id == field.id)
+            .order_by(WellPad.id.asc())
+            .all()
+        )
+        while len(existing_pads) < 2:
             pad = WellPad(
                 oil_field_id=field.id,
                 name=f"Куст {pad_counter}",
@@ -129,141 +138,140 @@ def seed_database(db: Session, *, force_telemetry: bool = False) -> dict[str, in
             )
             db.add(pad)
             db.flush()
-            pads_by_field[field.code] = pad
+            existing_pads.append(pad)
             pad_counter += 1
-            # second pad
-            pad2 = WellPad(
-                oil_field_id=field.id,
-                name=f"Куст {pad_counter}",
-                code=f"{field.code}-P{pad_counter}",
-                latitude=61.0 + pad_counter * 0.1,
-                longitude=73.0 + pad_counter * 0.1,
-            )
-            db.add(pad2)
-            db.flush()
-            pads_by_field[f"{field.code}2"] = pad2
-            pad_counter += 1
+        pads_by_field[field.code] = existing_pads[0]
+        pads_by_field[f"{field.code}2"] = existing_pads[1]
 
-        sensor_types = {st.code: st for st in db.query(SensorType).all()}
-        now = datetime.now(timezone.utc)
+    sensor_types = {st.code: st for st in db.query(SensorType).all()}
+    now = datetime.now(timezone.utc)
+    created_wells: list[Well] = []
 
-        for idx, (wname, fcode, status, degraded) in enumerate(well_defs):
-            field = next(f for f in field_rows if f.code == fcode)
-            pad = pads_by_field[fcode] if idx % 2 == 0 else pads_by_field[f"{fcode}2"]
-            well = Well(
-                well_pad_id=pad.id,
-                name=wname,
-                inventory_number=f"INV-{1000 + idx}",
-                depth_m=2200 + idx * 35,
-                status=status,
-                commissioning_date=now - timedelta(days=400 + idx * 20),
-                notes="Синтетический объект для демонстрации GNO Monitor",
-            )
-            db.add(well)
-            db.flush()
-            stats["wells"] += 1
+    for idx, (wname, fcode, status, degraded) in enumerate(well_defs):
+        existing = db.query(Well).filter(Well.name == wname).first()
+        if existing:
+            continue
+        pad = pads_by_field[fcode] if idx % 2 == 0 else pads_by_field[f"{fcode}2"]
+        well = Well(
+            well_pad_id=pad.id,
+            name=wname,
+            inventory_number=f"INV-{1000 + idx}",
+            depth_m=2200 + idx * 35,
+            status=status,
+            commissioning_date=now - timedelta(days=400 + idx * 20),
+            notes="Синтетический объект для демонстрации GNO Monitor",
+        )
+        db.add(well)
+        db.flush()
+        stats["wells"] += 1
 
-            pump = EquipmentUnit(
-                well_id=well.id,
-                equipment_type="pump",
-                name=f"УЭЦН {wname}",
-                manufacturer="Новомет",
-                model="ЭЦН5-125",
-                serial_number=f"P-{wname}",
-                rated_power_kw=90,
-                rated_current_a=55,
-                rated_voltage_v=380,
-                install_date=now - timedelta(days=300),
-                status="operating" if status != "stopped" else "stopped",
-            )
-            motor = EquipmentUnit(
-                well_id=well.id,
-                equipment_type="motor",
-                name=f"ПЭД {wname}",
-                manufacturer="Борец",
-                model="ПЭД-90",
-                serial_number=f"M-{wname}",
-                rated_power_kw=90,
-                rated_current_a=55,
-                rated_voltage_v=380,
-                install_date=now - timedelta(days=300),
-                status="operating" if status != "stopped" else "stopped",
-            )
-            cable = EquipmentUnit(
-                well_id=well.id,
-                equipment_type="cable",
-                name=f"Кабель {wname}",
-                manufacturer="Камкабель",
-                model="КГБ 3х16",
-                serial_number=f"C-{wname}",
-                install_date=now - timedelta(days=300),
-                status="operating",
-            )
-            db.add_all([pump, motor, cable])
-            db.flush()
+        pump = EquipmentUnit(
+            well_id=well.id,
+            equipment_type="pump",
+            name=f"УЭЦН {wname}",
+            manufacturer="Новомет",
+            model="ЭЦН5-125",
+            serial_number=f"P-{wname}",
+            rated_power_kw=90,
+            rated_current_a=55,
+            rated_voltage_v=380,
+            install_date=now - timedelta(days=300),
+            status="operating" if status != "stopped" else "stopped",
+        )
+        motor = EquipmentUnit(
+            well_id=well.id,
+            equipment_type="motor",
+            name=f"ПЭД {wname}",
+            manufacturer="Борец",
+            model="ПЭД-90",
+            serial_number=f"M-{wname}",
+            rated_power_kw=90,
+            rated_current_a=55,
+            rated_voltage_v=380,
+            install_date=now - timedelta(days=300),
+            status="operating" if status != "stopped" else "stopped",
+        )
+        cable = EquipmentUnit(
+            well_id=well.id,
+            equipment_type="cable",
+            name=f"Кабель {wname}",
+            manufacturer="Камкабель",
+            model="КГБ 3х16",
+            serial_number=f"C-{wname}",
+            install_date=now - timedelta(days=300),
+            status="operating",
+        )
+        db.add_all([pump, motor, cable])
+        db.flush()
 
-            for code, st in sensor_types.items():
-                equip = motor if "motor" in code or "current" in code or "voltage" in code else pump
-                db.add(
-                    Sensor(
-                        well_id=well.id,
-                        equipment_unit_id=equip.id,
-                        sensor_type_id=st.id,
-                        tag=f"{wname}.{code}",
-                        is_active=True,
-                    )
-                )
-            db.flush()
-
+        for code, st in sensor_types.items():
+            equip = motor if "motor" in code or "current" in code or "voltage" in code else pump
             db.add(
-                OperationalState(
+                Sensor(
                     well_id=well.id,
-                    state="running" if status != "stopped" else "stopped",
-                    started_at=now - timedelta(days=10),
-                    description="Синтетическое состояние",
+                    equipment_unit_id=equip.id,
+                    sensor_type_id=st.id,
+                    tag=f"{wname}.{code}",
+                    is_active=True,
                 )
             )
+        db.flush()
 
-            if degraded or idx in {1, 3, 5}:
-                db.add(
-                    Failure(
-                        well_id=well.id,
-                        equipment_unit_id=pump.id,
-                        failure_type="Снижение подачи",
-                        severity="high" if status == "critical" else "medium",
-                        occurred_at=now - timedelta(days=5 + idx),
-                        downtime_hours=8 + idx,
-                        presumed_cause="Износ рабочих органов / осложнения",
-                        description="Синтетический отказ для обучения/демо аналитики",
-                    )
-                )
-                stats["events"] += 1
+        db.add(
+            OperationalState(
+                well_id=well.id,
+                state="running" if status != "stopped" else "stopped",
+                started_at=now - timedelta(days=10),
+                description="Синтетическое состояние",
+            )
+        )
 
+        if degraded or status in {"warning", "critical", "stopped"}:
+            failure_type = {
+                "critical": "Перегрев ПЭД / снижение подачи",
+                "stopped": "Аварийный останов УЭЦН",
+                "warning": "Снижение подачи",
+            }.get(status, "Снижение подачи")
             db.add(
-                MaintenanceAction(
+                Failure(
                     well_id=well.id,
                     equipment_unit_id=pump.id,
-                    action_type="ТО-2",
-                    started_at=now - timedelta(days=40 + idx * 3),
-                    ended_at=now - timedelta(days=39 + idx * 3),
-                    performer="Бригада №3",
-                    result="Выполнено",
-                    description="Синтетическое ТО",
+                    failure_type=failure_type,
+                    severity="high" if status in {"critical", "stopped"} else "medium",
+                    occurred_at=now - timedelta(days=5 + idx),
+                    downtime_hours=8 + idx,
+                    presumed_cause="Износ рабочих органов / осложнения",
+                    description="Синтетический отказ для обучения/демо аналитики",
                 )
             )
             stats["events"] += 1
-            wells.append(well)
-        db.flush()
-    else:
-        wells = db.query(Well).all()
 
-    # Telemetry: seed if empty
+        db.add(
+            MaintenanceAction(
+                well_id=well.id,
+                equipment_unit_id=pump.id,
+                action_type="ТО-2" if status != "stopped" else "Аварийный ремонт",
+                started_at=now - timedelta(days=40 + idx * 3),
+                ended_at=now - timedelta(days=39 + idx * 3),
+                performer="Бригада №3",
+                result="Выполнено" if status != "stopped" else "Требуется повторный вывод",
+                description="Синтетическое ТО",
+            )
+        )
+        stats["events"] += 1
+        created_wells.append(well)
+    db.flush()
+    wells = db.query(Well).all()
+
+    # Telemetry: seed if empty, forced, or only for newly added wells
     tel_count = db.query(Telemetry).count()
     if tel_count == 0 or force_telemetry:
         if force_telemetry and tel_count:
             db.query(Telemetry).delete()
             db.flush()
         stats["telemetry"] = _seed_telemetry(db, wells)
+    elif created_wells:
+        stats["telemetry"] = _seed_telemetry(db, created_wells)
 
     db.commit()
     return stats
